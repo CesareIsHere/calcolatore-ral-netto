@@ -1,12 +1,12 @@
 /**
- * Salary Service — RAL → retribuzione netta
- * Normativa IRPEF 2026 (approssimazione indicativa).
+ * Salary Service — Gross Salary (RAL) → Net Salary
+ * 2026 IRPEF Regulations (approximate estimate).
  *
- * Fonti:
- *  - TUIR Art. 13 — Detrazioni per reddito da lavoro dipendente
- *  - TUIR Art. 12 — Detrazioni per carichi di famiglia
- *  - DL 3/2020 Art. 1 — Trattamento Integrativo
- *  - L. 207/2024 Art. 1 commi 4-9 — Bonus / Ulteriore Detrazione
+ * Sources:
+ *  - TUIR Art. 13 — Deductions for dependent work income
+ *  - TUIR Art. 12 — Deductions for family dependents
+ *  - DL 3/2020 Art. 1 — Integrated Treatment (refundable credit)
+ *  - L. 207/2024 Art. 1 cc. 4-9 — Bonus / Additional Deduction
  */
 
 // ─── Input ────────────────────────────────────────────────────────────────────
@@ -21,14 +21,14 @@ export interface MealVoucherInput {
 
 export interface SalaryInput {
   ral: number;
-  numMensilita: number;
+  numPayPeriods: number;
   regionalTaxRate: number;
   municipalTaxRate: number;
   mealVoucher?: MealVoucherInput;
   hasSpouseDependent: boolean;
   dependentChildrenOver21: number;
-  /** Quota della detrazione figli spettante: 100 (genitore unico/coniuge a carico)
-   *  o 50 (ripartita tra i due genitori non separati — Art. 12 nota 3). */
+  /** Portion of children deduction: 100 (single parent/spouse dependent)
+   *  or 50 (split between two unmarried parents — Art. 12 note 3). */
   childrenDeductionShare: 50 | 100;
   otherDependents: number;
 }
@@ -46,162 +46,162 @@ export interface SalaryBreakdown {
   ral: number;
   inpsContributions: number;
   taxableIncome: number;
-  // IRPEF
+  // IRPEF (Personal Income Tax)
   irpefGross: number;
   employmentDeduction: number;
   spouseDeduction: number;
   childrenDeduction: number;
   otherDependentsDeduction: number;
   totalDeductions: number;
-  ulterioreDeduzione: number;    // L.207/2024 non-rimborsabile (R 20k–40k)
-  irpefAfterDeductions: number;  // max(0, irpefGross − detrazioni − ulterioreDed.)
-  trattamentoIntegrativo: number; // DL 3/2020 — credito rimborsabile
-  bonusL207: number;             // L.207/2024 bonus rimborsabile (R ≤ 20k)
-  irpefNet: number;              // IRPEF finale (può essere negativa = beneficio cash)
-  // Addizionali
+  additionalDeduction: number;    // L.207/2024 non-refundable (R 20k–40k)
+  irpefAfterDeductions: number;   // max(0, irpefGross − deductions − additionalDed.)
+  integratedTreatment: number;    // DL 3/2020 — refundable credit
+  bonusL207: number;              // L.207/2024 refundable bonus (R ≤ 20k)
+  irpefNet: number;               // Final IRPEF (can be negative = cash benefit)
+  // Additional taxes
   regionalTax: number;
   municipalTax: number;
-  // Totali
-  annualSalaryNet: number;       // netto retribuzione pura (senza buoni pasto)
-  monthlyVoucherBenefit: number; // benefit mensile buoni pasto esenti
-  annualNet: number;             // = annualSalaryNet + buoni pasto esenti annui
-  monthlyNet: number;            // = annualSalaryNet / numMensilita + monthlyVoucherBenefit
+  // Totals
+  annualSalaryNet: number;        // Net salary (excluding meal vouchers)
+  monthlyVoucherBenefit: number;  // Monthly tax-exempt meal voucher benefit
+  annualNet: number;              // = annualSalaryNet + annual tax-exempt vouchers
+  monthlyNet: number;             // = annualSalaryNet / numPayPeriods + monthlyVoucherBenefit
   effectiveTaxRate: number;
-  // Costo aziendale
-  inpsContributionsDatoriali: number; // INPS a carico datore (~23.81%)
-  tfr: number;                        // TFR accantonato (6.91% RAL — Art. 2120 c.c.)
-  costoAziendale: number;             // RAL + INPS datoriale + TFR
-  effectiveTaxRateWithEmployer: number; // pressione fiscale sul costo aziendale
+  // Employer costs
+  inpsContributionEmployer: number; // INPS employer contribution (~23.81%)
+  severanceFund: number;            // Severance fund accrual (6.91% RAL — Art. 2120 c.c.)
+  totalEmployerCost: number;        // RAL + INPS employer + severanceFund
+  effectiveTaxRateWithEmployer: number; // Total tax burden on employer cost
   mealVoucher?: MealVoucherBreakdown;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Tronca a 4 cifre decimali (Art. 12 nota 5 TUIR). */
+/** Truncates to 4 decimal places (Art. 12 note 5 TUIR). */
 function truncate4(n: number): number {
   return Math.trunc(n * 10_000) / 10_000;
 }
 
-// ─── Costanti ─────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-const INPS_RATE = 0.0919;
-/** Contributi INPS a carico del datore di lavoro (quota IVS + altri — approssimazione). */
-const INPS_RATE_DATORIALE = 0.2381;
-/** TFR: 6,91% della retribuzione utile annua (Art. 2120 c.c.). */
-const TFR_RATE = 0.0691;
+const INPS_EMPLOYEE_RATE = 0.0919;
+/** Employee INPS contributions (pension and other — flat rate). */
+const INPS_EMPLOYER_RATE = 0.2381;
+/** Severance fund: 6.91% of annual gross salary (Art. 2120 c.c.). */
+const SEVERANCE_FUND_RATE = 0.0691;
 
-const MEAL_VOUCHER_EXEMPTION: Record<MealVoucherType, number> = {
-  electronic: 10, // 2026: soglia elevata a €10/gg
+const MEAL_VOUCHER_EXEMPTION_THRESHOLD: Record<MealVoucherType, number> = {
+  electronic: 10, // 2026: increased to €10/day
   paper: 4,
 };
 
-// Scaglioni IRPEF 2026
+// IRPEF Tax Brackets 2026
 const TAX_BRACKETS: { limit: number; rate: number }[] = [
   { limit: 28_000, rate: 0.23 },
-  { limit: 50_000, rate: 0.33 }, // 2026: ridotto da 35% a 33%
+  { limit: 50_000, rate: 0.33 }, // 2026: reduced from 35% to 33%
   { limit: Infinity, rate: 0.43 },
 ];
 
-// ─── IRPEF lorda ──────────────────────────────────────────────────────────────
+// ─── Gross IRPEF (Personal Income Tax) ────────────────────────────────────────
 
-function calculateIrpef(R: number): number {
+function calculateGrossIrpef(taxableIncome: number): number {
   let tax = 0;
-  let prev = 0;
+  let prevLimit = 0;
   for (const { limit, rate } of TAX_BRACKETS) {
-    if (R <= prev) break;
-    tax += (Math.min(R, limit) - prev) * rate;
-    prev = limit;
+    if (taxableIncome <= prevLimit) break;
+    tax += (Math.min(taxableIncome, limit) - prevLimit) * rate;
+    prevLimit = limit;
   }
   return tax;
 }
 
-// ─── Art. 13 TUIR — Detrazione lavoro dipendente ─────────────────────────────
+// ─── Art. 13 TUIR — Employment Income Deduction ──────────────────────────────
 
-function calculateEmploymentDeduction(R: number): number {
-  if (R <= 15_000) return 1_955;
+function calculateEmploymentDeduction(taxableIncome: number): number {
+  if (taxableIncome <= 15_000) return 1_955;
 
-  const C28 = (28_000 - R) / 13_000;
-  if (R <= 25_000) return 1_910 + 1_190 * C28;
-  if (R <= 28_000) return 1_975 + 1_190 * C28; // +65 correttivo
+  const coefficientBelow28k = (28_000 - taxableIncome) / 13_000;
+  if (taxableIncome <= 25_000) return 1_910 + 1_190 * coefficientBelow28k;
+  if (taxableIncome <= 28_000) return 1_975 + 1_190 * coefficientBelow28k; // +65 adjustment
 
-  const C50 = (50_000 - R) / 22_000;
-  if (R <= 35_000) return 65 + 1_910 * C50; // +65 correttivo
-  if (R < 50_000) return 1_910 * C50;
+  const coefficientBelow50k = (50_000 - taxableIncome) / 22_000;
+  if (taxableIncome <= 35_000) return 65 + 1_910 * coefficientBelow50k; // +65 adjustment
+  if (taxableIncome < 50_000) return 1_910 * coefficientBelow50k;
   return 0;
 }
 
-// ─── Art. 12 TUIR — Detrazione coniuge a carico ──────────────────────────────
+// ─── Art. 12 TUIR — Spouse Dependent Deduction ────────────────────────────────
 
-function calculateSpouseDeduction(R: number): number {
-  if (R <= 15_000) return 800 - 110 * (R / 15_000);
-  if (R <= 29_000) return 690;
-  if (R <= 29_200) return 700;  // +10 correttivo
-  if (R <= 34_700) return 710;  // +20 correttivo
-  if (R <= 35_000) return 720;  // +30 correttivo
-  if (R <= 35_100) return 710;  // +20 correttivo
-  if (R <= 35_200) return 700;  // +10 correttivo
-  if (R <= 40_000) return 690;
-  if (R <= 80_000) return 690 * ((80_000 - R) / 40_000);
+function calculateSpouseDeduction(taxableIncome: number): number {
+  if (taxableIncome <= 15_000) return 800 - 110 * (taxableIncome / 15_000);
+  if (taxableIncome <= 29_000) return 690;
+  if (taxableIncome <= 29_200) return 700;  // +10 adjustment
+  if (taxableIncome <= 34_700) return 710;  // +20 adjustment
+  if (taxableIncome <= 35_000) return 720;  // +30 adjustment
+  if (taxableIncome <= 35_100) return 710;  // +20 adjustment
+  if (taxableIncome <= 35_200) return 700;  // +10 adjustment
+  if (taxableIncome <= 40_000) return 690;
+  if (taxableIncome <= 80_000) return 690 * ((80_000 - taxableIncome) / 40_000);
   return 0;
 }
 
-// ─── Art. 12 TUIR — Detrazione figli > 21 a carico ──────────────────────────
+// ─── Art. 12 TUIR — Children Over 21 Dependent Deduction ──────────────────────
 
-function calculateChildrenDeduction(R: number, n: number): number {
-  if (n <= 0) return 0;
-  // C troncato a 4 decimali (Art. 12 nota 5)
-  const C = truncate4(Math.max(0, (80_000 - R + 15_000 * n) / (80_000 + 15_000 * n)));
-  return 950 * C * n;
+function calculateChildrenDeduction(taxableIncome: number, numberOfChildren: number): number {
+  if (numberOfChildren <= 0) return 0;
+  // C truncated to 4 decimals (Art. 12 note 5)
+  const coefficient = truncate4(Math.max(0, (80_000 - taxableIncome + 15_000 * numberOfChildren) / (80_000 + 15_000 * numberOfChildren)));
+  return 950 * coefficient * numberOfChildren;
 }
 
-// ─── Art. 12 TUIR — Detrazione altri familiari a carico ──────────────────────
+// ─── Art. 12 TUIR — Other Family Dependents Deduction ────────────────────────
 
-function calculateOtherDependentsDeduction(R: number, n: number): number {
-  if (n <= 0) return 0;
-  // C troncato a 4 decimali (Art. 12 nota 5)
-  const C = truncate4(Math.max(0, (80_000 - R) / 80_000));
-  return 750 * C * n;
+function calculateOtherDependentsDeduction(taxableIncome: number, numberOfDependents: number): number {
+  if (numberOfDependents <= 0) return 0;
+  // C truncated to 4 decimals (Art. 12 note 5)
+  const coefficient = truncate4(Math.max(0, (80_000 - taxableIncome) / 80_000));
+  return 750 * coefficient * numberOfDependents;
 }
 
-// ─── DL 3/2020 Art. 1 — Trattamento Integrativo (credito rimborsabile) ───────
+// ─── DL 3/2020 Art. 1 — Integrated Treatment (Refundable Credit) ──────────────
 
-function calculateTrattamentoIntegrativo(
-  R: number,
+function calculateIntegratedTreatment(
+  taxableIncome: number,
   irpefGross: number,
   employmentDeduction: number,
   totalDeductions: number
 ): number {
-  if (R <= 15_000) {
-    // Spetta se: IRPEF lorda − (detr. lavoro − 75) > 0
+  if (taxableIncome <= 15_000) {
+    // Applies if: gross IRPEF − (employment deduction − 75) > 0
     return irpefGross - (employmentDeduction - 75) > 0 ? 1_200 : 0;
   }
-  if (R <= 28_000) {
-    // Spetta la quota di detrazioni che eccede l'IRPEF lorda, max 1.200
+  if (taxableIncome <= 28_000) {
+    // Applies the portion of deductions exceeding gross IRPEF, max €1,200
     return Math.min(1_200, Math.max(0, totalDeductions - irpefGross));
   }
   return 0;
 }
 
-// ─── L. 207/2024 Art. 1 commi 4-9 — Bonus / Ulteriore Detrazione ─────────────
+// ─── L. 207/2024 Art. 1 cc. 4-9 — Bonus / Additional Deduction ────────────────
 
 interface BonusL207 {
-  refundableCredit: number;      // bonus rimborsabile (R ≤ 20k)
-  nonRefundableDeduction: number; // ulteriore detrazione non-rimborsabile (R 20k–40k)
+  refundableCredit: number;    // refundable bonus (taxableIncome ≤ 20k)
+  nonRefundableDeduction: number; // non-refundable additional deduction (20k–40k)
 }
 
-function calculateBonusL207(R: number): BonusL207 {
-  if (R <= 8_500) return { refundableCredit: R * 0.071, nonRefundableDeduction: 0 };
-  if (R <= 15_000) return { refundableCredit: R * 0.053, nonRefundableDeduction: 0 };
-  if (R <= 20_000) return { refundableCredit: R * 0.048, nonRefundableDeduction: 0 };
-  if (R <= 32_000) return { refundableCredit: 0, nonRefundableDeduction: 1_000 };
-  if (R <= 40_000) return { refundableCredit: 0, nonRefundableDeduction: 1_000 * ((40_000 - R) / 8_000) };
+function calculateBonusL207(taxableIncome: number): BonusL207 {
+  if (taxableIncome <= 8_500) return { refundableCredit: taxableIncome * 0.071, nonRefundableDeduction: 0 };
+  if (taxableIncome <= 15_000) return { refundableCredit: taxableIncome * 0.053, nonRefundableDeduction: 0 };
+  if (taxableIncome <= 20_000) return { refundableCredit: taxableIncome * 0.048, nonRefundableDeduction: 0 };
+  if (taxableIncome <= 32_000) return { refundableCredit: 0, nonRefundableDeduction: 1_000 };
+  if (taxableIncome <= 40_000) return { refundableCredit: 0, nonRefundableDeduction: 1_000 * ((40_000 - taxableIncome) / 8_000) };
   return { refundableCredit: 0, nonRefundableDeduction: 0 };
 }
 
-// ─── Buoni pasto ──────────────────────────────────────────────────────────────
+// ─── Meal Vouchers ────────────────────────────────────────────────────────────
 
 function calculateMealVoucher(input: MealVoucherInput): MealVoucherBreakdown {
-  const threshold = MEAL_VOUCHER_EXEMPTION[input.type];
+  const threshold = MEAL_VOUCHER_EXEMPTION_THRESHOLD[input.type];
   const monthlyTotal = input.daysPerMonth * input.valuePerDay;
   const monthlyExempt = input.daysPerMonth * Math.min(input.valuePerDay, threshold);
   const monthlyTaxable = input.daysPerMonth * Math.max(0, input.valuePerDay - threshold);
@@ -213,71 +213,70 @@ function calculateMealVoucher(input: MealVoucherInput): MealVoucherBreakdown {
   };
 }
 
-// ─── Export principale ────────────────────────────────────────────────────────
+// ─── Main Export ──────────────────────────────────────────────────────────────
 
 export function calculateSalary(input: SalaryInput): SalaryBreakdown {
-  const { ral, numMensilita, regionalTaxRate, municipalTaxRate } = input;
+  const { ral, numPayPeriods, regionalTaxRate, municipalTaxRate } = input;
 
-  const inpsContributions = ral * INPS_RATE;
+  const inpsContributions = ral * INPS_EMPLOYEE_RATE;
 
   const mealVoucher = input.mealVoucher
     ? calculateMealVoucher(input.mealVoucher)
     : undefined;
 
   const taxableIncome = ral - inpsContributions + (mealVoucher?.annualTaxable ?? 0);
-  const R = taxableIncome;
 
-  // ── IRPEF lorda ──
-  const irpefGross = calculateIrpef(R);
+  // ── Gross IRPEF ──
+  const irpefGross = calculateGrossIrpef(taxableIncome);
 
-  // ── Detrazioni non-rimborsabili (Art. 12-13 TUIR) ──
-  const employmentDeduction = calculateEmploymentDeduction(R);
-  const spouseDeduction = input.hasSpouseDependent ? calculateSpouseDeduction(R) : 0;
-  // Quota 50% o 100% (Art. 12 nota 3 — ripartizione tra genitori)
+  // ── Non-refundable deductions (Art. 12-13 TUIR) ──
+  const employmentDeduction = calculateEmploymentDeduction(taxableIncome);
+  const spouseDeduction = input.hasSpouseDependent ? calculateSpouseDeduction(taxableIncome) : 0;
+  // Portion 50% or 100% (Art. 12 note 3 — split between parents)
   const childrenDeduction =
-    calculateChildrenDeduction(R, input.dependentChildrenOver21) *
+    calculateChildrenDeduction(taxableIncome, input.dependentChildrenOver21) *
     (input.childrenDeductionShare / 100);
-  const otherDependentsDeduction = calculateOtherDependentsDeduction(R, input.otherDependents);
+  const otherDependentsDeduction = calculateOtherDependentsDeduction(taxableIncome, input.otherDependents);
   const totalDeductions =
     employmentDeduction + spouseDeduction + childrenDeduction + otherDependentsDeduction;
 
-  // ── L.207/2024: ulteriore detrazione non-rimborsabile (R 20k–40k) ──
-  const { refundableCredit: bonusL207, nonRefundableDeduction: ulterioreDeduzione } =
-    calculateBonusL207(R);
+  // ── L.207/2024: additional non-refundable deduction (€20k–40k) ──
+  const { refundableCredit: bonusL207, nonRefundableDeduction: additionalDeduction } =
+    calculateBonusL207(taxableIncome);
 
-  // Dopo tutte le detrazioni non-rimborsabili (floor a 0)
-  const irpefAfterDeductions = Math.max(0, irpefGross - totalDeductions - ulterioreDeduzione);
+  // After all non-refundable deductions (floor at 0)
+  const irpefAfterDeductions = Math.max(0, irpefGross - totalDeductions - additionalDeduction);
 
-  // ── Crediti rimborsabili (possono portare IRPEF in negativo = beneficio cash) ──
-  const trattamentoIntegrativo = calculateTrattamentoIntegrativo(
-    R,
+  // ── Refundable credits (can make IRPEF negative = cash benefit) ──
+  const integratedTreatment = calculateIntegratedTreatment(
+    taxableIncome,
     irpefGross,
     employmentDeduction,
     totalDeductions
   );
 
-  // IRPEF finale: può essere negativa
-  const irpefNet = irpefAfterDeductions - trattamentoIntegrativo - bonusL207;
+  // Final IRPEF: can be negative
+  const irpefNet = irpefAfterDeductions - integratedTreatment - bonusL207;
 
-  // ── Addizionali (calcolate sull'imponibile) ──
-  const regionalTax = R * regionalTaxRate;
-  const municipalTax = R * municipalTaxRate;
+  // ── Additional taxes (calculated on taxable income) ──
+  const regionalTax = taxableIncome * regionalTaxRate;
+  const municipalTax = taxableIncome * municipalTaxRate;
 
-  // Netto retribuzione pura (esclusi buoni pasto)
+  // Net salary only (excluding meal vouchers)
   const annualSalaryNet = ral - inpsContributions - irpefNet - regionalTax - municipalTax;
-  // Benefit mensile buoni pasto esenti (non legato alle mensilità)
+  // Monthly tax-exempt meal voucher benefit (not tied to pay periods)
   const monthlyVoucherBenefit = mealVoucher?.monthlyExempt ?? 0;
-  // Netto totale: retribuzione + benefit buoni pasto
+  // Total net: salary + meal voucher benefit
   const annualNet = annualSalaryNet + monthlyVoucherBenefit * 12;
-  const monthlyNet = annualSalaryNet / numMensilita + monthlyVoucherBenefit;
+  const monthlyNet = annualSalaryNet / numPayPeriods + monthlyVoucherBenefit;
 
   const totalTaxBurden = inpsContributions + irpefNet + regionalTax + municipalTax;
   const effectiveTaxRate = totalTaxBurden / ral;
 
-  const inpsContributionsDatoriali = ral * INPS_RATE_DATORIALE;
-  const tfr = ral * TFR_RATE;
-  const costoAziendale = ral + inpsContributionsDatoriali + tfr;
-  const effectiveTaxRateWithEmployer = 1 - annualNet / costoAziendale;
+  const inpsContributionEmployer = ral * INPS_EMPLOYER_RATE;
+  const severanceFund = ral * SEVERANCE_FUND_RATE;
+  const totalEmployerCost = ral + inpsContributionEmployer + severanceFund;
+  const effectiveTaxRateWithEmployer = 1 - annualNet / totalEmployerCost;
 
   return {
     ral,
@@ -289,9 +288,9 @@ export function calculateSalary(input: SalaryInput): SalaryBreakdown {
     childrenDeduction,
     otherDependentsDeduction,
     totalDeductions,
-    ulterioreDeduzione,
+    additionalDeduction,
     irpefAfterDeductions,
-    trattamentoIntegrativo,
+    integratedTreatment,
     bonusL207,
     irpefNet,
     regionalTax,
@@ -301,9 +300,9 @@ export function calculateSalary(input: SalaryInput): SalaryBreakdown {
     annualNet,
     monthlyNet,
     effectiveTaxRate,
-    inpsContributionsDatoriali,
-    tfr,
-    costoAziendale,
+    inpsContributionEmployer,
+    severanceFund,
+    totalEmployerCost,
     effectiveTaxRateWithEmployer,
     mealVoucher,
   };

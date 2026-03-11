@@ -8,16 +8,16 @@ import {
   SalaryBreakdown,
 } from "@/lib/services/salary.service";
 
-// ─── Formatter ────────────────────────────────────────────────────────────────
+// ─── Formatters ───────────────────────────────────────────────────────────────
 
 const EUR = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" });
-const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
+const percentageFormat = (value: number) => `${(value * 100).toFixed(2)}%`;
 
-// ─── Form state ───────────────────────────────────────────────────────────────
+// ─── Form State ───────────────────────────────────────────────────────────────
 
 interface FormState {
   ral: string;
-  numMensilita: string;
+  numPayPeriods: string;
   region: string;
   municipalTaxRate: string;
   hasMealVouchers: boolean;
@@ -32,7 +32,7 @@ interface FormState {
 
 const DEFAULT_FORM: FormState = {
   ral: "",
-  numMensilita: "13",
+  numPayPeriods: "13",
   region: "Lombardia",
   municipalTaxRate: "0.80",
   hasMealVouchers: false,
@@ -45,7 +45,7 @@ const DEFAULT_FORM: FormState = {
   otherDependents: "0",
 };
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Home() {
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
@@ -82,7 +82,7 @@ export default function Home() {
     setResult(
       calculateSalary({
         ral,
-        numMensilita: Number.parseInt(form.numMensilita, 10),
+        numPayPeriods: Number.parseInt(form.numPayPeriods, 10),
         regionalTaxRate: region.additionalTaxRate,
         municipalTaxRate: municipalRate / 100,
         mealVoucher: form.hasMealVouchers
@@ -104,7 +104,7 @@ export default function Home() {
   return (
     <div className="px-4 py-12">
       <div className="mx-auto w-full max-w-6xl space-y-8">
-        {/* Header */}
+        {/* Page header */}
         <div>
           <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
             Calcolatore RAL → Netto
@@ -115,11 +115,11 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Two-column layout */}
+        {/* Two-column responsive layout: form (left) + results (right) */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
-          {/* Left: Form */}
+          {/* Left column: Input form */}
           <form onSubmit={handleSubmit} className="space-y-8">
-            {/* Sezione 1: Reddito */}
+            {/* Section 1: Income */}
             <Section title="Reddito">
               <div className="grid grid-cols-2 gap-4">
                 <Field label="RAL (€)" htmlFor="ral">
@@ -130,16 +130,16 @@ export default function Home() {
                     placeholder="es. 35000"
                     value={form.ral}
                     onChange={(e) => set({ ral: e.target.value })}
-                    className={inputCls}
+                    className={inputClassNames}
                   />
                 </Field>
 
-                <Field label="N. mensilità" htmlFor="mensilita">
+                <Field label="N. mensilità" htmlFor="payPeriods">
                   <select
-                    id="mensilita"
-                    value={form.numMensilita}
-                    onChange={(e) => set({ numMensilita: e.target.value })}
-                    className={inputCls}
+                    id="payPeriods"
+                    value={form.numPayPeriods}
+                    onChange={(e) => set({ numPayPeriods: e.target.value })}
+                    className={inputClassNames}
                   >
                     <option value="12">12</option>
                     <option value="13">13 (con tredicesima)</option>
@@ -149,7 +149,7 @@ export default function Home() {
               </div>
             </Section>
 
-            {/* Sezione 2: Fiscalità locale */}
+            {/* Section 2: Local taxes */}
             <Section title="Fiscalità locale">
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Regione di residenza" htmlFor="region">
@@ -157,11 +157,11 @@ export default function Home() {
                     id="region"
                     value={form.region}
                     onChange={(e) => set({ region: e.target.value })}
-                    className={inputCls}
+                    className={inputClassNames}
                   >
                     {REGIONS.map((r) => (
                       <option key={r.name} value={r.name}>
-                        {r.name} ({pct(r.additionalTaxRate)})
+                        {r.name} ({percentageFormat(r.additionalTaxRate)})
                       </option>
                     ))}
                   </select>
@@ -185,20 +185,20 @@ export default function Home() {
                     step="0.01"
                     value={form.municipalTaxRate}
                     onChange={(e) => set({ municipalTaxRate: e.target.value })}
-                    className={inputCls}
+                    className={inputClassNames}
                   />
                 </Field>
               </div>
             </Section>
 
-            {/* Sezione 3: Buoni pasto */}
+            {/* Section 3: Meal vouchers */}
             <Section title="Buoni pasto">
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={form.hasMealVouchers}
                   onChange={(e) => set({ hasMealVouchers: e.target.checked })}
-                  className={checkboxCls}
+                  className={checkboxClassNames}
                 />
                 <span className="text-sm text-zinc-700 dark:text-zinc-300">
                   Ho i buoni pasto
@@ -214,7 +214,7 @@ export default function Home() {
                       onChange={(e) =>
                         set({ mealVoucherType: e.target.value as MealVoucherType })
                       }
-                      className={inputCls}
+                      className={inputClassNames}
                     >
                       <option value="electronic">Elettronico (esente ≤ €10/gg)</option>
                       <option value="paper">Cartaceo (esente ≤ €4/gg)</option>
@@ -229,7 +229,7 @@ export default function Home() {
                       max="31"
                       value={form.mealVoucherDays}
                       onChange={(e) => set({ mealVoucherDays: e.target.value })}
-                      className={inputCls}
+                      className={inputClassNames}
                     />
                   </Field>
 
@@ -241,14 +241,14 @@ export default function Home() {
                       step="0.50"
                       value={form.mealVoucherValue}
                       onChange={(e) => set({ mealVoucherValue: e.target.value })}
-                      className={inputCls}
+                      className={inputClassNames}
                     />
                   </Field>
                 </div>
               )}
             </Section>
 
-            {/* Sezione 4: Familiari a carico */}
+            {/* Section 4: Family dependents */}
             <Section title="Familiari a carico">
               <div className="space-y-3">
                 <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -256,7 +256,7 @@ export default function Home() {
                     type="checkbox"
                     checked={form.hasSpouseDependent}
                     onChange={(e) => set({ hasSpouseDependent: e.target.checked })}
-                    className={checkboxCls}
+                    className={checkboxClassNames}
                   />
                   <span className="text-sm text-zinc-700 dark:text-zinc-300">
                     Coniuge a carico
@@ -279,11 +279,11 @@ export default function Home() {
                       onChange={(e) =>
                         set({ dependentChildrenOver21: e.target.value })
                       }
-                      className={inputCls}
+                      className={inputClassNames}
                     />
                   </Field>
 
-                  {/* Quota ripartizione figli — solo se coniuge NON a carico e figli > 0 */}
+                  {/* Children deduction share — only shown if children > 0 AND spouse NOT dependent */}
                   {Number.parseInt(form.dependentChildrenOver21, 10) > 0 && !form.hasSpouseDependent && (
                     <Field
                       label="Quota detrazione figli"
@@ -298,7 +298,7 @@ export default function Home() {
                         onChange={(e) =>
                           set({ childrenDeductionShare: e.target.value as "50" | "100" })
                         }
-                        className={inputCls}
+                        className={inputClassNames}
                       >
                         <option value="100">100% — genitore unico / separato</option>
                         <option value="50">50% — entrambi i genitori lavorano</option>
@@ -317,7 +317,7 @@ export default function Home() {
                       min="0"
                       value={form.otherDependents}
                       onChange={(e) => set({ otherDependents: e.target.value })}
-                      className={inputCls}
+                      className={inputClassNames}
                     />
                   </Field>
                 </div>
@@ -326,15 +326,15 @@ export default function Home() {
 
             {error && <p className="text-sm text-red-500">{error}</p>}
 
-            <button type="submit" className={btnCls}>
+            <button type="submit" className={buttonClassNames}>
               Calcola
             </button>
           </form>
 
-          {/* Right: Results */}
+          {/* Right column: Results (sticky on desktop) */}
           <div className="lg:sticky lg:top-8">
             {result ? (
-              <Results result={result} numMensilita={Number.parseInt(form.numMensilita, 10)} />
+              <Results result={result} numPayPeriods={Number.parseInt(form.numPayPeriods, 10)} />
             ) : (
               <div className="flex items-center justify-center rounded-xl border border-dashed border-zinc-200 dark:border-zinc-700 py-20">
                 <p className="text-sm text-zinc-400 dark:text-zinc-500">
@@ -349,30 +349,30 @@ export default function Home() {
   );
 }
 
-// ─── Results ──────────────────────────────────────────────────────────────────
+// ─── Results Breakdown ─────────────────────────────────────────────────────────
 
 function Results({
   result,
-  numMensilita,
+  numPayPeriods,
 }: {
   readonly result: SalaryBreakdown;
-  readonly numMensilita: number;
+  readonly numPayPeriods: number;
 }) {
   return (
     <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 overflow-hidden">
-      {/* Highlight */}
+      {/* Highlight section */}
       <div className="grid grid-cols-2 gap-6 bg-zinc-900 dark:bg-zinc-50 px-6 py-5">
         <Highlight
           label="Netto annuo"
           value={EUR.format(result.annualNet)}
         />
         <Highlight
-          label={`Netto mensile (su ${numMensilita})`}
+          label={`Netto mensile (su ${numPayPeriods})`}
           value={EUR.format(result.monthlyNet)}
         />
       </div>
 
-      {/* Breakdown */}
+      {/* Breakdown sections */}
       <div className="divide-y divide-zinc-100 dark:divide-zinc-800 px-6">
         <BreakdownSection title="Base imponibile">
           <Row label="RAL lorda" value={EUR.format(result.ral)} />
@@ -408,10 +408,10 @@ function Results({
               value={`+${EUR.format(result.otherDependentsDeduction)}`}
             />
           )}
-          {result.ulterioreDeduzione > 0 && (
+          {result.additionalDeduction > 0 && (
             <Row
               label="Ulteriore detrazione (L.207/2024)"
-              value={`+${EUR.format(result.ulterioreDeduzione)}`}
+              value={`+${EUR.format(result.additionalDeduction)}`}
             />
           )}
           <Row
@@ -419,10 +419,10 @@ function Results({
             value={`−${EUR.format(result.irpefAfterDeductions)}`}
             bold
           />
-          {result.trattamentoIntegrativo > 0 && (
+          {result.integratedTreatment > 0 && (
             <Row
               label="Trattamento integrativo (DL 3/2020)"
-              value={`+${EUR.format(result.trattamentoIntegrativo)}`}
+              value={`+${EUR.format(result.integratedTreatment)}`}
               credit
             />
           )}
@@ -484,7 +484,7 @@ function Results({
             Pressione fiscale effettiva (sul dipendente)
           </span>
           <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            {pct(result.effectiveTaxRate)}
+            {percentageFormat(result.effectiveTaxRate)}
           </span>
         </div>
         <div className="py-2 flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800">
@@ -495,7 +495,7 @@ function Results({
             </span>
           </span>
           <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            {EUR.format(result.tfr)}
+            {EUR.format(result.severanceFund)}
           </span>
         </div>
         <div className="py-2 flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800">
@@ -506,7 +506,7 @@ function Results({
             </span>
           </span>
           <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            {EUR.format(result.costoAziendale)}
+            {EUR.format(result.totalEmployerCost)}
           </span>
         </div>
         <div className="py-2 flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800">
@@ -517,7 +517,7 @@ function Results({
             </span>
           </span>
           <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            {pct(result.effectiveTaxRateWithEmployer)}
+            {percentageFormat(result.effectiveTaxRateWithEmployer)}
           </span>
         </div>
       </div>
@@ -525,7 +525,7 @@ function Results({
   );
 }
 
-// ─── UI primitives ────────────────────────────────────────────────────────────
+// ─── UI Components ────────────────────────────────────────────────────────────
 
 function Section({ title, children }: { readonly title: string; readonly children: React.ReactNode }) {
   return (
@@ -617,21 +617,21 @@ function Row({
   readonly bold?: boolean;
   readonly credit?: boolean;
 }) {
-  const base = "flex items-center justify-between py-2 text-sm";
+  const baseClasses = "flex items-center justify-between py-2 text-sm";
 
-  let labelCls = "text-zinc-600 dark:text-zinc-300";
-  if (credit) labelCls = "text-emerald-600 dark:text-emerald-400";
-  else if (muted) labelCls = "text-zinc-400 dark:text-zinc-500";
+  let labelClasses = "text-zinc-600 dark:text-zinc-300";
+  if (credit) labelClasses = "text-emerald-600 dark:text-emerald-400";
+  else if (muted) labelClasses = "text-zinc-400 dark:text-zinc-500";
 
-  let valueCls = "text-zinc-900 dark:text-zinc-50";
-  if (credit) valueCls = bold ? "font-semibold text-emerald-600 dark:text-emerald-400" : "text-emerald-600 dark:text-emerald-400";
-  else if (bold) valueCls = "font-semibold text-zinc-900 dark:text-zinc-50";
-  else if (muted) valueCls = "text-zinc-400 dark:text-zinc-500";
+  let valueClasses = "text-zinc-900 dark:text-zinc-50";
+  if (credit) valueClasses = bold ? "font-semibold text-emerald-600 dark:text-emerald-400" : "text-emerald-600 dark:text-emerald-400";
+  else if (bold) valueClasses = "font-semibold text-zinc-900 dark:text-zinc-50";
+  else if (muted) valueClasses = "text-zinc-400 dark:text-zinc-500";
 
   return (
-    <div className={base}>
-      <span className={labelCls}>{label}</span>
-      <span className={valueCls}>{value}</span>
+    <div className={baseClasses}>
+      <span className={labelClasses}>{label}</span>
+      <span className={valueClasses}>{value}</span>
     </div>
   );
 }
@@ -647,13 +647,13 @@ function Highlight({ label, value }: { readonly label: string; readonly value: s
   );
 }
 
-// ─── Shared class strings ─────────────────────────────────────────────────────
+// ─── Shared Tailwind Classes ──────────────────────────────────────────────────
 
-const inputCls =
+const inputClassNames =
   "w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:focus:ring-zinc-100";
 
-const checkboxCls =
+const checkboxClassNames =
   "h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900 dark:border-zinc-600 dark:bg-zinc-800";
 
-const btnCls =
+const buttonClassNames =
   "w-full rounded-lg bg-zinc-900 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200";

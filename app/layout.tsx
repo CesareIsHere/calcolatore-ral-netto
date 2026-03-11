@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Calcolatore RAL -> Netto",
-  description: "This is a simple tool to calculate the net salary from the gross salary in Italy, taking into account taxes, social security contributions, and meal vouchers.",
+  description: "A simple tool to calculate net salary from gross salary in Italy, accounting for IRPEF taxes, social security contributions, and meal vouchers.",
 };
 
 export default function RootLayout({
@@ -23,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="it">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased flex min-h-screen flex-col bg-zinc-50 dark:bg-zinc-950`}
       >
